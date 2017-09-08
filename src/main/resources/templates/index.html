@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.springframework.org/schema/mvc" xmlns:v-bind="http://www.w3.org/1999/xhtml"
+      xmlns:v-on="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="UTF-8" />
+
+    <title>index</title>
+    <meta name="author" content="hainet" />
+
+    <link th:replace="common/dependencies :: dependencies" />
+    <link rel="stylesheet" href="../static/bootstrap/bootstrap.min.css" th:remove="tag" />
+    <script src="../static/jquery/jquery-3.2.1.min.js" th:remove="tag"></script>
+    <script src="../static/bootstrap/bootstrap.min.js" th:remove="tag"></script>
+  </head>
+
+  <body>
+    <div id="vue" class="container">
+      <label for="refresh-interval">Auto refresh: {{ refreshInterval }} seconds</label>
+      <input id="refresh-interval" class="form-control"
+             v-model="refreshInterval" v-bind:value="refreshInterval" v-on:change="getMetrics(); getTraces()"
+             type="range" list="refresh-interval-list" min="1" max="300" />
+      <datalist id="refresh-interval-list">
+        <option value="1"></option>
+        <option value="5"></option>
+        <option value="60"></option>
+        <option value="300"></option>
+      </datalist>
+
+      <ul class="nav nav-tabs">
+        <li class="active"><a href="#metrics" data-toggle="tab">Metrics</a></li>
+        <li><a href="#traces" data-toggle="tab">Traces</a></li>
+      </ul>
+
+      <div class="tab-content">
+        <div id="metrics" class="tab-pane fade in active">
+          <div class="table-responsive">
+            <table class="table table-striped table-hover">
+              <tr>
+                <th>稼働時間</th>
+                <td>{{ clearUptime }}</td>
+              </tr>
+              <tr>
+                <th>ヒープサイズ</th>
+                <td>{{ clearHeap }}</td>
+              </tr>
+              <tr>
+                <th>使用済みヒープ</th>
+                <td>{{ clearHeapUsed }}</td>
+              </tr>
+              <tr>
+                <th>ライブスレッド</th>
+                <td>{{ metrics.threads }}</td>
+              </tr>
+              <tr>
+                <th>デーモンスレッド</th>
+                <td>{{ metrics.threadsDaemon }}</td>
+              </tr>
+            </table>
+          </div>
+        </div>
+        <div id="traces" class="tab-pane fade in">
+          <div class="table-responsive">
+            <table class="table table-striped table-hover">
+              <thead>
+              <tr>
+                <td>日時</td>
+                <td>HTTPメソッド</td>
+                <td>パス</td>
+                <td>所要時間</td>
+              </tr>
+              </thead>
+              <tbody>
+              <tr v-for="trace in traces">
+                <td>{{ trace.timestamp }}</td>
+                <td>{{ trace.info.method }}</td>
+                <td>{{ trace.info.path }}</td>
+                <td>{{ trace.info.timeTaken }}</td>
+              </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script th:inline="javascript">
+      var vm = new Vue({
+          el: '#vue',
+          data: {
+              metrics: {
+                  uptime: 0,
+                  heap: 0,
+                  heapUsed: 0,
+                  threads: 0,
+                  threadsDaemon: 0
+              },
+              traces: [],
+              refreshInterval: 1,
+              refreshIdForGetMetrics: '',
+              refreshIdForGetTraces: ''
+          },
+          computed: {
+              clearUptime: function () {
+                  return clarifyTime(this.metrics.uptime);
+              },
+              clearHeap: function () {
+                  return clarifyBytes(this.metrics.heap * 1024);
+              },
+              clearHeapUsed: function () {
+                  return clarifyBytes(this.metrics.heapUsed * 1024);
+              }
+          },
+          mounted: function () {
+              this.getMetrics()
+              this.getTraces()
+          },
+          methods: {
+              getMetrics: function () {
+                  var vm = this
+                  clearInterval(vm.refreshIdForGetMetrics)
+                  vm.refreshIdForGetMetrics = setInterval(function () {
+                      axios.get('/metrics/uptime')
+                          .then(function (response) {
+                              vm.metrics.uptime = response.data.uptime
+                          })
+                          .catch(function (error) {
+                              console.log(error)
+                          })
+                      axios.get('/metrics/heap.*')
+                          .then(function (response) {
+                              vm.metrics.heap = response.data.heap
+                              vm.metrics.heapUsed = response.data['heap.used']
+                          })
+                          .catch(function (error) {
+                              console.log(error)
+                          })
+                      axios.get('/metrics/threads.*')
+                          .then(function (response) {
+                              vm.metrics.threads = response.data.threads
+                              vm.metrics.threadsDaemon = response.data['threads.daemon']
+                          })
+                          .catch(function (error) {
+                              console.log(error)
+                          })
+                  }, vm.refreshInterval * 1000)
+              },
+              getTraces: function () {
+                  var vm = this
+                  clearInterval(vm.refreshIdForGetTraces)
+                  vm.refreshIdForGetTraces = setInterval(function () {
+                      axios.get('/trace')
+                          .then(function (response) {
+                              vm.traces = response.data
+                          })
+                          .catch(function (error) {
+                              console.log(error)
+                          })
+                  }, vm.refreshInterval * 1000)
+              }
+          }
+      })
+
+      function clarifyTime(millis) {
+          return `${Math.floor(millis / 1000)} SECONDS`
+      }
+
+      function clarifyBytes(bytes) {
+          const extensions = [ 'B', 'KB', 'MB', 'GB' ]
+          let extension =  extensions[0]
+
+          for ( let i=1; i<extensions.length; i++ ) {
+              if ( bytes >= 1024 ) {
+                  bytes /= 1024
+                  extension = extensions[i]
+              }
+          }
+
+          return `${Math.round(bytes)} ${extension}`;
+      }
+    </script>
+  </body>
+</html>
