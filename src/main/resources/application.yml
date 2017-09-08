@@ -1,0 +1,10 @@
+spring:
+  thymeleaf:
+    mode: HTML
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Tokyo
+
+management:
+  security:
+    enabled: false
