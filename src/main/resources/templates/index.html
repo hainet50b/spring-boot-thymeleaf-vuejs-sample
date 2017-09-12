@@ -11,13 +11,22 @@
     <link rel="stylesheet" href="../static/bootstrap/bootstrap.min.css" th:remove="tag" />
     <script src="../static/jquery/jquery-3.2.1.min.js" th:remove="tag"></script>
     <script src="../static/bootstrap/bootstrap.min.js" th:remove="tag"></script>
+
+    <style>
+      .fade-enter-active, .fade-leave-active {
+        transition: opacity 0.5s
+      }
+      .fade-enter, .fade-leave-to {
+        opacity: 0
+      }
+    </style>
   </head>
 
   <body>
     <div id="vue" class="container">
-      <label for="refresh-interval">Auto refresh: {{ refreshInterval }} seconds</label>
+      <label for="refresh-interval">Auto refresh: {{ refresh.interval }} seconds</label>
       <input id="refresh-interval" class="form-control"
-             v-model="refreshInterval" v-bind:value="refreshInterval" v-on:change="getMetrics(); getTraces()"
+             v-model="refresh.interval" v-bind:value="refresh.interval" v-on:change="getMetrics(); getTraces()"
              type="range" list="refresh-interval-list" min="1" max="300" />
       <datalist id="refresh-interval-list">
         <option value="1"></option>
@@ -25,6 +34,10 @@
         <option value="60"></option>
         <option value="300"></option>
       </datalist>
+
+      <transition name="fade">
+        <div class="alert alert-danger" role="alert" v-if="error.is">Unable to connect server for {{ error.duration }} seconds!</div>
+      </transition>
 
       <ul class="nav nav-tabs">
         <li class="active"><a href="#metrics" data-toggle="tab">Metrics</a></li>
@@ -95,9 +108,18 @@
                   threadsDaemon: 0
               },
               traces: [],
-              refreshInterval: 1,
-              refreshIdForGetMetrics: '',
-              refreshIdForGetTraces: ''
+              refresh: {
+                  interval: 1,
+                  id: {
+                      getMetrics: '',
+                      getTraces: '',
+                      startErrorDuration: ''
+                  }
+              },
+              error: {
+                  is: false,
+                  duration: 0
+              }
           },
           computed: {
               clearUptime: function () {
@@ -117,45 +139,66 @@
           methods: {
               getMetrics: function () {
                   var vm = this
-                  clearInterval(vm.refreshIdForGetMetrics)
-                  vm.refreshIdForGetMetrics = setInterval(function () {
+                  clearInterval(vm.refresh.id.getMetrics)
+                  vm.refresh.id.getMetrics = setInterval(function () {
                       axios.get('/metrics/uptime')
                           .then(function (response) {
+                              vm.endErrorTimer()
                               vm.metrics.uptime = response.data.uptime
                           })
                           .catch(function (error) {
-                              console.log(error)
+                              vm.startErrorTimer()
                           })
                       axios.get('/metrics/heap.*')
                           .then(function (response) {
+                              vm.endErrorTimer()
                               vm.metrics.heap = response.data.heap
                               vm.metrics.heapUsed = response.data['heap.used']
                           })
                           .catch(function (error) {
-                              console.log(error)
+                              vm.startErrorTimer()
                           })
                       axios.get('/metrics/threads.*')
                           .then(function (response) {
+                              vm.endErrorTimer()
                               vm.metrics.threads = response.data.threads
                               vm.metrics.threadsDaemon = response.data['threads.daemon']
                           })
                           .catch(function (error) {
-                              console.log(error)
+                              vm.startErrorTimer()
                           })
-                  }, vm.refreshInterval * 1000)
+                  }, vm.refresh.interval * 1000)
               },
               getTraces: function () {
                   var vm = this
-                  clearInterval(vm.refreshIdForGetTraces)
-                  vm.refreshIdForGetTraces = setInterval(function () {
+                  clearInterval(vm.refresh.id.getTraces)
+                  vm.refresh.id.getTraces = setInterval(function () {
                       axios.get('/trace')
                           .then(function (response) {
+                              vm.endErrorTimer()
                               vm.traces = response.data
                           })
                           .catch(function (error) {
-                              console.log(error)
+                              vm.startErrorTimer()
                           })
-                  }, vm.refreshInterval * 1000)
+                  }, vm.refresh.interval * 1000)
+              },
+              startErrorTimer: function() {
+                  var vm = this
+                  if ( !vm.error.is ) {
+                      vm.error.is = true
+                      vm.refresh.id.startErrorDuration = setInterval(function () {
+                          vm.error.duration++
+                      }, 1000)
+                  }
+              },
+              endErrorTimer: function () {
+                  var vm = this
+                  if ( vm.error.is ) {
+                      vm.error.is = false
+                      clearInterval(vm.refresh.id.startErrorDuration)
+                      vm.error.duration = 0
+                  }
               }
           }
       })
