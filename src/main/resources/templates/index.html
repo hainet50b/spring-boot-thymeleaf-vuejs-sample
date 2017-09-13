@@ -64,6 +64,14 @@
                 <td>{{ clearHeapUsed }}</td>
               </tr>
               <tr>
+                <th>マイナーGC回数</th>
+                <td>{{ metrics.gcPsScavengeCount }}</td>
+              </tr>
+              <tr>
+                <th>メジャーGC回数</th>
+                <td>{{ metrics.gcPsMarksweepCount }}</td>
+              </tr>
+              <tr>
                 <th>ライブスレッド</th>
                 <td>{{ metrics.threads }}</td>
               </tr>
@@ -108,6 +116,8 @@
                   uptime: 0,
                   heap: 0,
                   heapUsed: 0,
+                  gcPsScavengeCount: 0,
+                  gcPsMarksweepCount: 0,
                   threads: 0,
                   threadsDaemon: 0
               },
@@ -150,7 +160,7 @@
                               vm.endErrorTimer()
                               vm.metrics.uptime = response.data.uptime
                           })
-                          .catch(function (error) {
+                          .catch(function () {
                               vm.startErrorTimer()
                           })
                       axios.get('/metrics/heap.*')
@@ -159,7 +169,16 @@
                               vm.metrics.heap = response.data.heap
                               vm.metrics.heapUsed = response.data['heap.used']
                           })
-                          .catch(function (error) {
+                          .catch(function () {
+                              vm.startErrorTimer()
+                          })
+                      axios.get('/metrics/gc.*')
+                          .then(function (response) {
+                              vm.endErrorTimer()
+                              vm.metrics.gcPsScavengeCount = response.data['gc.ps_scavenge.count']
+                              vm.metrics.gcPsMarksweepCount = response.data['gc.ps_marksweep.count']
+                          })
+                          .catch(function () {
                               vm.startErrorTimer()
                           })
                       axios.get('/metrics/threads.*')
@@ -168,7 +187,7 @@
                               vm.metrics.threads = response.data.threads
                               vm.metrics.threadsDaemon = response.data['threads.daemon']
                           })
-                          .catch(function (error) {
+                          .catch(function () {
                               vm.startErrorTimer()
                           })
                   }, vm.refresh.interval * 1000)
@@ -182,7 +201,7 @@
                               vm.endErrorTimer()
                               vm.traces = response.data
                           })
-                          .catch(function (error) {
+                          .catch(function () {
                               vm.startErrorTimer()
                           })
                   }, vm.refresh.interval * 1000)
