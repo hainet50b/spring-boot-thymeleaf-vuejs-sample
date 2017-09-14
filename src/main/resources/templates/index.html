@@ -29,7 +29,7 @@
         Auto refresh: {{ refresh.interval }} seconds
       </label>
       <input id="refresh-interval" class="form-control"
-             v-model="refresh.interval" v-bind:value="refresh.interval" v-on:change="getMetrics(); getTraces()"
+             v-model="refresh.interval" v-bind:value="refresh.interval"
              type="range" list="refresh-interval-list" min="1" max="300" />
       <datalist id="refresh-interval-list">
         <option value="1"></option>
@@ -44,6 +44,7 @@
 
       <ul class="nav nav-tabs">
         <li class="active"><a href="#metrics" data-toggle="tab">Metrics</a></li>
+        <li><a href="#chart" data-toggle="tab">Chart</a></li>
         <li><a href="#traces" data-toggle="tab">Traces</a></li>
       </ul>
 
@@ -53,15 +54,15 @@
             <table class="table table-striped table-hover">
               <tr>
                 <th>稼働時間</th>
-                <td>{{ clearUptime }}</td>
+                <td>{{ clearUptime }} SECONDS</td>
               </tr>
               <tr>
                 <th>ヒープサイズ</th>
-                <td>{{ clearHeap }}</td>
+                <td>{{ clearHeap.bytes }} {{ clearHeap.extension }}</td>
               </tr>
               <tr>
                 <th>使用済みヒープ</th>
-                <td>{{ clearHeapUsed }}</td>
+                <td>{{ clearHeapUsed.bytes }} {{ clearHeapUsed.extension }}</td>
               </tr>
               <tr>
                 <th>マイナーGC回数</th>
@@ -81,6 +82,9 @@
               </tr>
             </table>
           </div>
+        </div>
+        <div id="chart" class="tab-pane fade in">
+          <canvas id="metrics-chart"></canvas>
         </div>
         <div id="traces" class="tab-pane fade in">
           <div class="table-responsive">
@@ -119,7 +123,8 @@
                   gcPsScavengeCount: 0,
                   gcPsMarksweepCount: 0,
                   threads: 0,
-                  threadsDaemon: 0
+                  threadsDaemon: 0,
+                  histories: []
               },
               traces: [],
               refresh: {
@@ -149,41 +154,31 @@
           mounted: function () {
               this.getMetrics()
               this.getTraces()
+              this.updateMetricsChart()
+          },
+          updated: function () {
+              this.getMetrics()
+              this.getTraces()
+              this.updateMetricsChart()
           },
           methods: {
               getMetrics: function () {
                   var vm = this
                   clearInterval(vm.refresh.id.getMetrics)
                   vm.refresh.id.getMetrics = setInterval(function () {
-                      axios.get('/metrics/uptime')
+                      axios.get('/metrics')
                           .then(function (response) {
                               vm.endErrorTimer()
                               vm.metrics.uptime = response.data.uptime
-                          })
-                          .catch(function () {
-                              vm.startErrorTimer()
-                          })
-                      axios.get('/metrics/heap.*')
-                          .then(function (response) {
-                              vm.endErrorTimer()
                               vm.metrics.heap = response.data.heap
                               vm.metrics.heapUsed = response.data['heap.used']
-                          })
-                          .catch(function () {
-                              vm.startErrorTimer()
-                          })
-                      axios.get('/metrics/gc.*')
-                          .then(function (response) {
-                              vm.endErrorTimer()
+                              vm.metrics.histories.push({
+                                  timestamp: response.data.uptime,
+                                  heap: response.data.heap,
+                                  heapUsed: response.data['heap.used']
+                              }),
                               vm.metrics.gcPsScavengeCount = response.data['gc.ps_scavenge.count']
                               vm.metrics.gcPsMarksweepCount = response.data['gc.ps_marksweep.count']
-                          })
-                          .catch(function () {
-                              vm.startErrorTimer()
-                          })
-                      axios.get('/metrics/threads.*')
-                          .then(function (response) {
-                              vm.endErrorTimer()
                               vm.metrics.threads = response.data.threads
                               vm.metrics.threadsDaemon = response.data['threads.daemon']
                           })
@@ -206,6 +201,52 @@
                           })
                   }, vm.refresh.interval * 1000)
               },
+              updateMetricsChart: function () {
+                  var ctx = document.getElementById('metrics-chart').getContext('2d')
+
+                  let timestamps = []
+                  let heaps = []
+                  let heapUseds = []
+
+                  this.metrics.histories.forEach(function (history) {
+                      timestamps.push(history.timestamp)
+                      heaps.push(history.heap)
+                      heapUseds.push(history.heapUsed)
+                  })
+
+                  var metricsChart = new Chart(ctx, {
+                      type: 'line',
+                      data: {
+                          labels: timestamps,
+                          datasets: [
+                              {
+                                  label: 'heapUsed',
+                                  data: heapUseds,
+                                  backgroundColor: 'rgba(247, 212, 168, 0.2)',
+                                  borderColor: 'rgba(241, 154, 42, 1)',
+                                  borderWidth: 1
+                              },
+                              {
+                                  label: 'heap',
+                                  data: heaps,
+                                  backgroundColor: 'rgba(206, 241, 252, 0.2)',
+                                  borderColor: 'rgba(32, 171, 217, 1)',
+                                  borderWidth: 1
+                              }
+                          ]
+                      },
+                      options: {
+                          animation: false,
+                          scales: {
+                              yAxes: [{
+                                  ticks: {
+                                      beginAtZero: true
+                                  }
+                              }]
+                          }
+                      }
+                  })
+              },
               startErrorTimer: function() {
                   var vm = this
                   if ( !vm.error.is ) {
@@ -227,7 +268,7 @@
       })
 
       function clarifyTime(millis) {
-          return `${Math.floor(millis / 1000)} SECONDS`
+          return Math.floor(millis / 1000)
       }
 
       function clarifyBytes(bytes) {
@@ -241,7 +282,10 @@
               }
           }
 
-          return `${Math.round(bytes)} ${extension}`;
+          return {
+              bytes: Math.round(bytes),
+              extension: extension
+          }
       }
     </script>
   </body>
