@@ -132,7 +132,7 @@
                   id: {
                       getMetrics: '',
                       getTraces: '',
-                      startErrorDuration: ''
+                      startErrorTimer: ''
                   }
               },
               error: {
@@ -168,7 +168,6 @@
                   vm.refresh.id.getMetrics = setInterval(function () {
                       axios.get('/metrics')
                           .then(function (response) {
-                              vm.endErrorTimer()
                               vm.metrics.uptime = response.data.uptime
                               vm.metrics.heap = response.data.heap
                               vm.metrics.heapUsed = response.data['heap.used']
@@ -183,6 +182,7 @@
                               vm.metrics.threadsDaemon = response.data['threads.daemon']
                           })
                           .catch(function () {
+                              clearInterval(vm.refresh.id.getMetrics)
                               vm.startErrorTimer()
                           })
                   }, vm.refresh.interval * 1000)
@@ -193,10 +193,10 @@
                   vm.refresh.id.getTraces = setInterval(function () {
                       axios.get('/trace')
                           .then(function (response) {
-                              vm.endErrorTimer()
                               vm.traces = response.data
                           })
                           .catch(function () {
+                              clearInterval(vm.refresh.id.getTraces)
                               vm.startErrorTimer()
                           })
                   }, vm.refresh.interval * 1000)
@@ -249,19 +249,20 @@
               },
               startErrorTimer: function() {
                   var vm = this
-                  if ( !vm.error.is ) {
+
+                  if (!vm.error.is) {
                       vm.error.is = true
-                      vm.refresh.id.startErrorDuration = setInterval(function () {
+                      vm.refresh.id.startErrorTimer = setInterval(function () {
                           vm.error.duration++
+                          axios.get('/health')
+                              .then(function () {
+                                  vm.error.is = false
+                                  vm.error.duration = 0
+                                  clearInterval(vm.refresh.id.startErrorTimer)
+                                  vm.getMetrics()
+                                  vm.getTraces()
+                              })
                       }, 1000)
-                  }
-              },
-              endErrorTimer: function () {
-                  var vm = this
-                  if ( vm.error.is ) {
-                      vm.error.is = false
-                      clearInterval(vm.refresh.id.startErrorDuration)
-                      vm.error.duration = 0
                   }
               }
           }
